@@ -3,15 +3,16 @@ package archive
 import (
 	"bytes"
 	"fmt"
-	"github.com/mongodb/mongo-tools/common/db"
-	"github.com/mongodb/mongo-tools/common/intents"
-	. "github.com/smartystreets/goconvey/convey"
-	"gopkg.in/mgo.v2/bson"
 	"hash"
 	"hash/crc32"
 	"io"
 	"os"
 	"testing"
+
+	"github.com/mongodb/mongo-tools/common/db"
+	"github.com/mongodb/mongo-tools/common/intents"
+	. "github.com/smartystreets/goconvey/convey"
+	"gopkg.in/mgo.v2/bson"
 )
 
 var testIntents = []*intents.Intent{
@@ -112,7 +113,11 @@ func TestBasicMux(t *testing.T) {
 
 			for _, dbc := range testIntents {
 				outChecksum[dbc.Namespace()] = crc32.NewIEEE()
-				demuxOuts[dbc.Namespace()] = &RegularCollectionReceiver{Intent: dbc, Demux: demux}
+				demuxOuts[dbc.Namespace()] = &RegularCollectionReceiver{
+					Intent: dbc,
+					Demux:  demux,
+					Origin: dbc.Namespace(),
+				}
 				demuxOuts[dbc.Namespace()].Open()
 			}
 			errChan := make(chan error)

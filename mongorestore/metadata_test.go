@@ -87,6 +87,7 @@ func TestGetDumpAuthVersion(t *testing.T) {
 			restore = &MongoRestore{
 				InputOptions: &InputOptions{},
 				ToolOptions:  &commonOpts.ToolOptions{},
+				NSOptions:    &NSOptions{},
 			}
 			Convey("auth version 1 should be detected", func() {
 				restore.manager = intents.NewIntentManager()
@@ -129,10 +130,9 @@ func TestGetDumpAuthVersion(t *testing.T) {
 				InputOptions: &InputOptions{
 					RestoreDBUsersAndRoles: true,
 				},
-				ToolOptions: &commonOpts.ToolOptions{
-					Namespace: &commonOpts.Namespace{
-						DB: "TestDB",
-					},
+				ToolOptions: &commonOpts.ToolOptions{},
+				NSOptions: &NSOptions{
+					DB: "TestDB",
 				},
 			}
 

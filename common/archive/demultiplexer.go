@@ -3,15 +3,16 @@ package archive
 import (
 	"bytes"
 	"fmt"
-	"github.com/mongodb/mongo-tools/common/db"
-	"github.com/mongodb/mongo-tools/common/intents"
-	"github.com/mongodb/mongo-tools/common/log"
-	"gopkg.in/mgo.v2/bson"
 	"hash"
 	"hash/crc64"
 	"io"
 	"sync"
 	"sync/atomic"
+
+	"github.com/mongodb/mongo-tools/common/db"
+	"github.com/mongodb/mongo-tools/common/intents"
+	"github.com/mongodb/mongo-tools/common/log"
+	"gopkg.in/mgo.v2/bson"
 )
 
 // DemuxOut is a Demultiplexer output consumer
@@ -102,33 +103,34 @@ func (demux *Demultiplexer) HeaderBSON(buf []byte) error {
 				return newWrappedError("failed arranging a consumer for new namespace", err)
 			}
 		}
-	}
-	if colHeader.EOF {
-		demux.outs[demux.currentNamespace].Close()
-		length := int64(demux.lengths[demux.currentNamespace])
-		crcUInt64, ok := demux.outs[demux.currentNamespace].Sum64()
-		if ok {
-			crc := int64(crcUInt64)
-			if crc != colHeader.CRC {
-				return fmt.Errorf("CRC mismatch for namespace %v, %v!=%v",
-					demux.currentNamespace,
-					crc,
-					colHeader.CRC,
-				)
+	} else {
+		if colHeader.EOF {
+			demux.outs[demux.currentNamespace].Close()
+			length := int64(demux.lengths[demux.currentNamespace])
+			crcUInt64, ok := demux.outs[demux.currentNamespace].Sum64()
+			if ok {
+				crc := int64(crcUInt64)
+				if crc != colHeader.CRC {
+					return fmt.Errorf("CRC mismatch for namespace %v, %v!=%v",
+						demux.currentNamespace,
+						crc,
+						colHeader.CRC,
+					)
+				}
+				log.Logf(log.DebugHigh,
+					"demux checksum for namespace %v is correct (%v), %v bytes",
+					demux.currentNamespace, crc, length)
+			} else {
+				log.Logf(log.DebugHigh,
+					"demux checksum for namespace %v was not calculated.",
+					demux.currentNamespace)
 			}
-			log.Logf(log.DebugHigh,
-				"demux checksum for namespace %v is correct (%v), %v bytes",
-				demux.currentNamespace, crc, length)
-		} else {
-			log.Logf(log.DebugHigh,
-				"demux checksum for namespace %v was not calculated.",
-				demux.currentNamespace)
+			delete(demux.outs, demux.currentNamespace)
+			delete(demux.lengths, demux.currentNamespace)
+			// in case we get a BSONBody with this block,
+			// we want to ensure that that causes an error
+			demux.currentNamespace = ""
 		}
-		delete(demux.outs, demux.currentNamespace)
-		delete(demux.lengths, demux.currentNamespace)
-		// in case we get a BSONBody with this block,
-		// we want to ensure that that causes an error
-		demux.currentNamespace = ""
 	}
 	return nil
 }
@@ -188,6 +190,7 @@ type RegularCollectionReceiver struct {
 	readLenChan      chan int
 	readBufChan      chan []byte
 	Intent           *intents.Intent
+	Origin           string
 	Demux            *Demultiplexer
 	partialReadArray []byte
 	partialReadBuf   []byte
@@ -263,7 +266,7 @@ func (receiver *RegularCollectionReceiver) Open() error {
 		receiver.readLenChan = make(chan int)
 		receiver.readBufChan = make(chan []byte)
 		receiver.hash = crc64.New(crc64.MakeTable(crc64.ECMA))
-		receiver.Demux.Open(receiver.Intent.Namespace(), receiver)
+		receiver.Demux.Open(receiver.Origin, receiver)
 	})
 	return nil
 }

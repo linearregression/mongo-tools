@@ -2,6 +2,7 @@ package archive
 
 import (
 	"io"
+	"strings"
 )
 
 // NamespaceHeader is a data structure that, as BSON, is found in archives where it indicates
@@ -54,4 +55,12 @@ type Reader struct {
 	In      io.ReadCloser
 	Demux   *Demultiplexer
 	Prelude *Prelude
+}
+
+func splitNamespace(ns string) (string, string) {
+	i := strings.Index(ns, ".")
+	if i != -1 {
+		return ns[:i], ns[i+1:]
+	}
+	return "", ns
 }

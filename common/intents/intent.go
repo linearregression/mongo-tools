@@ -2,10 +2,12 @@
 package intents
 
 import (
+	"io"
+	"strings"
+	"sync"
+
 	"github.com/mongodb/mongo-tools/common/log"
 	"gopkg.in/mgo.v2/bson"
-	"io"
-	"sync"
 )
 
 type file interface {
@@ -26,7 +28,7 @@ type FileNeedsIOBuffer interface {
 // mongorestore first scans the directory to generate a list
 // of all files to restore and what they map to. TODO comments
 type Intent struct {
-	// Namespace info
+	// Destination namespace info
 	DB string
 	C  string
 
@@ -228,26 +230,44 @@ func (manager *Manager) PutOplogIntent(intent *Intent, managerKey string) {
 }
 
 func (manager *Manager) putNormalIntent(intent *Intent) {
+	manager.putNormalIntentWithNamespace(intent.Namespace(), intent)
+}
+
+func (manager *Manager) putNormalIntentWithNamespace(ns string, intent *Intent) {
 	// BSON and metadata files for the same collection are merged
 	// into the same intent. This is done to allow for simple
 	// pairing of BSON + metadata without keeping track of the
 	// state of the filepath walker
-	if existing := manager.intents[intent.Namespace()]; existing != nil {
+	if existing := manager.intents[ns]; existing != nil {
 		existing.MergeIntent(intent)
 		return
 	}
 
 	// if key doesn't already exist, add it to the manager
-	manager.intents[intent.Namespace()] = intent
+	manager.intents[ns] = intent
 	manager.intentsByDiscoveryOrder = append(manager.intentsByDiscoveryOrder, intent)
 }
 
-// Put inserts an intent into the manager. Intents for the same collection
-// are merged together, so that BSON and metadata files for the same collection
-// are returned in the same intent.
+// Put inserts an intent into the manager with the same source namespace as
+// its destinations.
 func (manager *Manager) Put(intent *Intent) {
+	manager.PutWithNamespace(intent.Namespace(), intent)
+}
+
+// PutWithNamespace inserts an intent into the manager with the source set
+// to the provided namespace. Intents for the same collection are merged
+// together, so that BSON and metadata files for the same collection are
+// returned in the same intent.
+func (manager *Manager) PutWithNamespace(ns string, intent *Intent) {
 	if intent == nil {
 		panic("cannot insert nil *Intent into IntentManager")
+	}
+	var db string
+	i := strings.Index(ns, ".")
+	if i != -1 {
+		db = ns[:i]
+	} else {
+		db = ns
 	}
 
 	// bucket special-case collections
@@ -257,34 +277,34 @@ func (manager *Manager) Put(intent *Intent) {
 	}
 	if intent.IsSystemIndexes() {
 		if intent.BSONFile != nil {
-			manager.indexIntents[intent.DB] = intent
-			manager.specialIntents[intent.Namespace()] = intent
+			manager.indexIntents[db] = intent
+			manager.specialIntents[ns] = intent
 		}
 		return
 	}
 	if intent.IsUsers() {
 		if intent.BSONFile != nil {
 			manager.usersIntent = intent
-			manager.specialIntents[intent.Namespace()] = intent
+			manager.specialIntents[ns] = intent
 		}
 		return
 	}
 	if intent.IsRoles() {
 		if intent.BSONFile != nil {
 			manager.rolesIntent = intent
-			manager.specialIntents[intent.Namespace()] = intent
+			manager.specialIntents[ns] = intent
 		}
 		return
 	}
 	if intent.IsAuthVersion() {
 		if intent.BSONFile != nil {
 			manager.versionIntent = intent
-			manager.specialIntents[intent.Namespace()] = intent
+			manager.specialIntents[ns] = intent
 		}
 		return
 	}
 
-	manager.putNormalIntent(intent)
+	manager.putNormalIntentWithNamespace(ns, intent)
 }
 
 func (manager *Manager) GetOplogConflict() bool {
